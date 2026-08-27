@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BackToListButton } from "@/components/campsites/back-to-list-button";
+import { SourceEmbed } from "@/components/campsites/source-embed";
 import { SOURCE_LABEL, SourceLine } from "@/components/campsites/source-line";
 import type { Campsite } from "@/lib/campsites/types";
 
@@ -66,6 +67,7 @@ export function CampsiteDetail({ campsite }: { campsite: Campsite }) {
             <CardTitle className="text-sm">이 정보의 출처</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
+            <SourceEmbed source={campsite.source} />
             <SourceLine source={campsite.source} className="text-xs" />
             <p className="text-[0.9375rem] font-medium leading-relaxed">{campsite.source.title}</p>
             <a
