@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { hasVideoSource, matchesFacilities, matchesFacility, matchesRegion } from "@/lib/campsites/types";
+import { hasVideoSource, matchesFacilities, matchesFacility, matchesQuery, matchesRegion } from "@/lib/campsites/types";
 
 describe("matchesRegion", () => {
   it("region 값이 필터 접두어로 시작하면 매칭한다", () => {
@@ -38,6 +38,22 @@ describe("matchesFacilities", () => {
     const site = { amenities: ["개별울타리", "애견수영장"] };
     expect(matchesFacilities(site, ["개별울타리"])).toBe(true);
     expect(matchesFacilities(site, ["개별울타리", "애견운동장"])).toBe(false);
+  });
+});
+
+describe("matchesQuery", () => {
+  it("이름에 검색어가 포함되면 매칭한다", () => {
+    expect(matchesQuery({ name: "숲속 캠핑장" }, "숲속")).toBe(true);
+    expect(matchesQuery({ name: "숲속 캠핑장" }, "바다")).toBe(false);
+  });
+
+  it("대소문자를 가리지 않는다", () => {
+    expect(matchesQuery({ name: "Forest Camp" }, "forest")).toBe(true);
+  });
+
+  it("빈 검색어(공백 포함)는 모두 매칭한다", () => {
+    expect(matchesQuery({ name: "숲속 캠핑장" }, "")).toBe(true);
+    expect(matchesQuery({ name: "숲속 캠핑장" }, "   ")).toBe(true);
   });
 });
 

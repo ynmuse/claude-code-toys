@@ -49,6 +49,13 @@ export function matchesFacilities(site: Pick<Campsite, "amenities">, facilityNam
   return facilityNames.every((name) => matchesFacility(site, name));
 }
 
+/** 이름에 검색어가 포함되는지. 빈 검색어는 항상 매칭된다. */
+export function matchesQuery(site: Pick<Campsite, "name">, query: string): boolean {
+  const trimmed = query.trim();
+  if (!trimmed) return true;
+  return site.name.toLowerCase().includes(trimmed.toLowerCase());
+}
+
 /** 원본 영상·게시물이 실제로 확인된 곳(추천 대상)인지. */
 export function hasVideoSource(site: { source: Pick<Campsite["source"], "platform"> }): boolean {
   return site.source.platform === "youtube" || site.source.platform === "instagram";
