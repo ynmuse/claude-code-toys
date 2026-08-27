@@ -1,0 +1,732 @@
+<!--
+  prototype shell: the review chrome every prototype starts from.
+
+  Keep this comment in the prototype you grow from here: it is the contract,
+  and later turns work from that file rather than from this one.
+
+  Contract (extend product screens; keep the review shell):
+  - Product:  .sh-stage contains only end-user product UI. Keep review notes,
+               rationale, instructions, and approval controls in conversation.
+  - Screens:  <section data-screen="slug" data-title="Label"> inside .sh-stage.
+               The selector, arrow keys, and #hash routing build themselves.
+               Use one option per product destination or distinct surface,
+               named by its product role. Keep baselines, variants, comparison
+               labels, steps, indexes, and progress out of names and states.
+               Links may use href="#slug".
+  - States:   "Default" is automatic. A screen declares only representative
+               presets in data-states="Empty,Error". Use natural, screen-specific
+               names. Reserve presets for important multi-step results, forced
+               data or errors, or materially different structure; keep one-click
+               and transient states as interactions. Use data-when="Empty" on
+               preset-only elements. Call prototypeShell.setState("Name") on
+               entry and setState("Default") on exit, including when repeated
+               actions cross a preset condition.
+  - Viewport: "vp (m)" cycles full / 390 / 768. The 390 preset is a
+               fixed-height, internally scrolling phone frame. Start a
+               mobile-first prototype by adding class="sh-vp-390" to <body>
+               (or a bootstrap classList.add before the chrome script runs).
+  - Pinning:  keep in-frame bars (tab bars, CTAs) inside the phone with
+               position: sticky; position: fixed pins to the browser window.
+  - Tokens:   replace the project-tokens block with project tokens copied
+               verbatim. Map differing names to --background, --foreground, and
+               --font afterwards; replace network fonts with a system stack and
+               note that substitution. Without a design system, keep this
+               palette as the finished style.
+  - Placeholders: .wf-pic stands in for pictures the prototype has no real
+               files for. Use real text everywhere text belongs.
+
+  - Chrome:   Keep exactly the screen selector, selected-screen state selector,
+               and viewport cycle. Chrome that needs explaining has failed.
+
+  Self-contained by design: no build, no framework, no network.
+-->
+<meta charset="utf-8">
+<title>Prototype</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  /* ── project tokens: copied verbatim from app/globals.css (shadcn preset bX2) ── */
+  :root {
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.145 0 0);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.145 0 0);
+    --primary: oklch(0.205 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0);
+    --secondary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0);
+    --accent-foreground: oklch(0.205 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.922 0 0);
+    --input: oklch(0.922 0 0);
+    --ring: oklch(0.708 0 0);
+    --chart-1: oklch(0.87 0 0);
+    --chart-2: oklch(0.556 0 0);
+    --chart-3: oklch(0.439 0 0);
+    --chart-4: oklch(0.371 0 0);
+    --chart-5: oklch(0.269 0 0);
+    --radius: 0.625rem;
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+
+    /* derived radii, same formula as @theme inline in globals.css */
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.8);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+    --radius-4xl: calc(var(--radius) * 2.6);
+
+    /* shell mapping: Nunito Sans is a network font — system stack substituted */
+    --font: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", sans-serif;
+  }
+
+  /* ── review chrome (sh-*): keep; extend product styles elsewhere ── */
+  * { box-sizing: border-box }
+  body {
+    margin: 0; padding: 0 0 40px;
+    background: var(--background, #f6f6f6); color: var(--foreground, #3a3a3a);
+    font-family: var(--font, system-ui, sans-serif);
+  }
+  .sh-bar {
+    position: sticky; top: 0; z-index: 999;
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    padding: 8px 12px; background: #191a1c; color: #d7d7d7;
+    font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .sh-bar b, .sh-control-label { color: #8a8f98; font-weight: 500 }
+  .sh-control { display: inline-flex; gap: 5px; align-items: center }
+  .sh-bar button {
+    border: 1px solid #3a3d42; background: none; color: inherit;
+    font: inherit; padding: 2px 9px; border-radius: 99px; cursor: pointer;
+  }
+  .sh-bar select {
+    width: 170px; border: 1px solid #3a3d42; background: #232428; color: inherit;
+    font: inherit; padding: 3px 28px 3px 9px; border-radius: 7px; cursor: pointer;
+    color-scheme: dark;
+  }
+  #sh-screen { width: 190px }
+  .sh-bar button.on { background: #d7d7d7; color: #191a1c; border-color: #d7d7d7 }
+  .sh-spacer { flex: 1 }
+  .sh-stage { max-width: 960px; margin: 0 auto; padding: 12px 16px 0 }
+  [hidden] { display: none !important }
+
+  /* viewport presets */
+  .sh-vp-390 .sh-stage {
+    max-width: 390px; background: var(--background, #f6f6f6);
+    border: 10px solid #191a1c; border-radius: 28px;
+    padding: 16px 12px; height: min(844px, calc(100dvh - 52px));
+    overflow-y: auto; margin-top: 12px;
+  }
+  .sh-vp-768 .sh-stage {
+    max-width: 768px; border: 1px solid #c4c4c4; border-radius: 12px;
+    padding: 16px; margin-top: 12px;
+  }
+
+  /* placeholders */
+  .wf-pic  { border-radius: 4px; background:
+             repeating-linear-gradient(45deg, #e9e9e9, #e9e9e9 6px, #f2f2f2 6px, #f2f2f2 12px) }
+
+  /* ── product styles ── */
+  .app { padding-bottom: 48px }
+
+  .site-head { padding: 32px 0 20px }
+  .site-title { margin: 0; font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em }
+  .site-sub { margin: 6px 0 0; color: var(--muted-foreground); font-size: 0.875rem; line-height: 1.6 }
+
+  /* filters */
+  .filters {
+    display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 16px;
+    margin: 0 -16px; padding: 16px;
+    border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+    background: var(--card); position: sticky; top: 41px; z-index: 20;
+  }
+  .field { display: flex; flex-direction: column; gap: 6px; min-width: 0 }
+  .field-label { font-size: 0.75rem; font-weight: 500; color: var(--muted-foreground) }
+  .seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--muted); border-radius: var(--radius-md) }
+  .seg button {
+    border: 0; background: none; color: var(--muted-foreground); cursor: pointer;
+    font: inherit; font-size: 0.8125rem; padding: 5px 12px; border-radius: calc(var(--radius-md) - 2px);
+    white-space: nowrap; transition: background .12s, color .12s;
+  }
+  .seg button:hover { color: var(--foreground) }
+  .seg button[aria-pressed="true"] { background: var(--card); color: var(--foreground); font-weight: 500; box-shadow: 0 1px 2px rgb(0 0 0 / .06) }
+  .checks { display: flex; gap: 8px; flex-wrap: wrap }
+  .check {
+    display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+    border: 1px solid var(--border); border-radius: var(--radius-4xl);
+    padding: 6px 13px 6px 11px; font-size: 0.8125rem; background: var(--card);
+    transition: background .12s, border-color .12s;
+  }
+  .check:hover { background: var(--muted) }
+  .check input { margin: 0; width: 14px; height: 14px; accent-color: var(--primary) }
+  .check[data-on="true"] { border-color: var(--primary); background: var(--secondary) }
+  .result-count { font-size: 0.8125rem; color: var(--muted-foreground); white-space: nowrap }
+  .result-count b { color: var(--foreground); font-weight: 600 }
+  .btn-ghost {
+    border: 0; background: none; color: var(--muted-foreground); cursor: pointer;
+    font: inherit; font-size: 0.8125rem; padding: 6px 10px; border-radius: var(--radius-md);
+  }
+  .btn-ghost:hover { background: var(--muted); color: var(--foreground) }
+
+  /* section headings */
+  .section { padding-top: 28px }
+  .section-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px }
+  .section-head .result-count { margin-right: auto }
+  .section-title { margin: 0; font-size: 1.0625rem; font-weight: 600; letter-spacing: -0.01em }
+  .section-note { margin: 0 0 14px; color: var(--muted-foreground); font-size: 0.8125rem; line-height: 1.6 }
+
+  /* cards */
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(292px, 1fr)) }
+  .grid-pick { grid-template-columns: repeat(auto-fill, minmax(292px, 1fr)) }
+  .site-card {
+    display: flex; flex-direction: column; gap: 10px; text-align: left; width: 100%;
+    border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--card);
+    padding: 16px; cursor: pointer; font: inherit; color: inherit;
+    transition: border-color .12s, box-shadow .12s;
+  }
+  .site-card:hover { border-color: var(--ring); box-shadow: 0 1px 8px rgb(0 0 0 / .05) }
+  .site-card-pick { border-color: var(--foreground) }
+  .card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px }
+  .site-name { font-size: 0.9375rem; font-weight: 600; line-height: 1.4 }
+  .site-region { margin-top: 2px; font-size: 0.8125rem; color: var(--muted-foreground) }
+  .tags { display: flex; flex-wrap: wrap; gap: 5px }
+  .site-summary { font-size: 0.8125rem; line-height: 1.65; color: var(--muted-foreground) }
+  .card-foot {
+    display: flex; align-items: center; gap: 6px; padding-top: 4px;
+    font-size: 0.75rem; color: var(--muted-foreground);
+  }
+
+  /* badges — shadcn Badge geometry */
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px; height: 20px;
+    padding: 2px 8px; border: 1px solid transparent; border-radius: var(--radius-4xl);
+    font-size: 0.75rem; font-weight: 500; white-space: nowrap;
+  }
+  .badge-default { background: var(--primary); color: var(--primary-foreground) }
+  .badge-secondary { background: var(--secondary); color: var(--secondary-foreground) }
+  .badge-outline { border-color: var(--border); color: var(--foreground) }
+
+  .src-dot { width: 6px; height: 6px; border-radius: 99px; background: currentColor; flex: none }
+  .src-yt { color: oklch(0.55 0.2 25) }
+  .src-ig { color: oklch(0.55 0.18 330) }
+  .src-web { color: var(--muted-foreground) }
+
+  /* empty */
+  .empty {
+    padding: 44px 24px; text-align: center; border: 1px dashed var(--border);
+    border-radius: var(--radius-xl); background: var(--card);
+  }
+  .empty-title { margin: 0 0 6px; font-size: 0.9375rem; font-weight: 600 }
+  .empty-note { margin: 0 0 16px; font-size: 0.8125rem; line-height: 1.7; color: var(--muted-foreground) }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    height: 36px; padding: 0 16px; border: 1px solid transparent; border-radius: var(--radius-md);
+    background: var(--primary); color: var(--primary-foreground);
+    font: inherit; font-size: 0.875rem; font-weight: 500; cursor: pointer; text-decoration: none;
+  }
+  .btn:hover { opacity: .9 }
+  .btn-outline { background: var(--card); color: var(--foreground); border-color: var(--border) }
+  .btn-outline:hover { background: var(--muted); opacity: 1 }
+
+  /* detail */
+  .back {
+    display: inline-flex; align-items: center; gap: 6px; margin: 24px 0 0;
+    border: 0; background: none; color: var(--muted-foreground); cursor: pointer;
+    font: inherit; font-size: 0.8125rem; padding: 6px 10px 6px 6px; border-radius: var(--radius-md);
+  }
+  .back:hover { background: var(--muted); color: var(--foreground) }
+  .detail-head { padding: 12px 0 20px; border-bottom: 1px solid var(--border) }
+  .detail-name { margin: 0; font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em }
+  .detail-region { margin: 6px 0 12px; color: var(--muted-foreground); font-size: 0.875rem }
+  .detail-summary { margin: 14px 0 0; max-width: 62ch; font-size: 0.9375rem; line-height: 1.75; color: var(--muted-foreground) }
+  .detail-body { display: grid; gap: 20px; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); padding-top: 24px; align-items: start }
+  .panel { border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--card); padding: 18px }
+  .panel + .panel { margin-top: 12px }
+  .panel-title { margin: 0 0 10px; font-size: 0.875rem; font-weight: 600 }
+  .pros-cons { display: grid; gap: 18px }
+  .pc-label { display: flex; align-items: center; gap: 6px; font-size: 0.8125rem; font-weight: 600; margin-bottom: 8px }
+  .pc-list { margin: 0; padding-left: 18px; display: grid; gap: 6px }
+  .pc-list li { font-size: 0.875rem; line-height: 1.7; color: var(--muted-foreground) }
+  .mark-good { color: oklch(0.52 0.13 155) }
+  .mark-bad { color: oklch(0.58 0.16 45) }
+
+  .source-card { display: flex; flex-direction: column; gap: 10px }
+  .source-meta { display: flex; align-items: center; gap: 7px; font-size: 0.75rem }
+  .source-caption { font-size: 0.875rem; line-height: 1.6; font-weight: 500 }
+  .source-channel { font-size: 0.8125rem; color: var(--muted-foreground) }
+  .source-note {
+    margin: 0; padding: 10px 12px; border-radius: var(--radius-md); background: var(--muted);
+    font-size: 0.75rem; line-height: 1.65; color: var(--muted-foreground);
+  }
+  .facts { margin: 0; display: grid; gap: 10px }
+  .fact { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 10px; align-items: start }
+  .fact dt { font-size: 0.8125rem; color: var(--muted-foreground) }
+  .fact dd { margin: 0; font-size: 0.8125rem; line-height: 1.5 }
+
+  @media (max-width: 720px) {
+    .detail-body { grid-template-columns: minmax(0, 1fr) }
+    .filters { position: static }
+  }
+  .sh-vp-390 .detail-body { grid-template-columns: minmax(0, 1fr) }
+  .sh-vp-390 .filters { position: static; margin: 0 -12px }
+  .sh-vp-390 .grid { grid-template-columns: minmax(0, 1fr) }
+  .sh-vp-768 .filters { top: 0 }
+</style>
+
+<header class="sh-bar">
+  <b>proto</b>
+  <label class="sh-control"><span class="sh-control-label">screen</span><select id="sh-screen"></select></label>
+  <span class="sh-spacer"></span>
+  <label class="sh-control"><span class="sh-control-label">state</span><select id="sh-state"></select></label>
+  <button id="sh-vp">vp: full (m)</button>
+</header>
+
+<main class="sh-stage">
+
+  <section data-screen="browse" data-title="캠핑장 찾기" data-states="조건에 맞는 곳 없음">
+    <div class="app">
+      <div class="site-head">
+        <h1 class="site-title">반려견과 갈 캠핑장 찾기</h1>
+        <p class="site-sub">유튜브·인스타그램에 올라온 반려견 캠핑 콘텐츠에서 모은 경기·강원 캠핑장 12곳입니다.</p>
+      </div>
+
+      <div class="filters" data-component="new:FilterBar">
+        <div class="field">
+          <span class="field-label">지역</span>
+          <div class="seg" id="f-region" data-component="ToggleGroup">
+            <button type="button" data-value="all" aria-pressed="true">전체</button>
+            <button type="button" data-value="경기" aria-pressed="false">경기</button>
+            <button type="button" data-value="강원" aria-pressed="false">강원</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <span class="field-label">우리 강아지 크기</span>
+          <div class="seg" id="f-size" data-component="ToggleGroup">
+            <button type="button" data-value="all" aria-pressed="true">상관없음</button>
+            <button type="button" data-value="1" aria-pressed="false">소형견</button>
+            <button type="button" data-value="2" aria-pressed="false">중형견</button>
+            <button type="button" data-value="3" aria-pressed="false">대형견</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <span class="field-label">시설</span>
+          <div class="checks">
+            <label class="check" data-on="false" data-component="Checkbox">
+              <input type="checkbox" data-facility="애견운동장"> 애견운동장
+            </label>
+            <label class="check" data-on="false" data-component="Checkbox">
+              <input type="checkbox" data-facility="개별울타리"> 개별울타리
+            </label>
+          </div>
+        </div>
+
+      </div>
+
+      <section class="section" id="pick-section">
+        <div class="section-head">
+          <h2 class="section-title">영상으로 확인된 곳</h2>
+        </div>
+        <p class="section-note">실제로 다녀온 사람이 올린 유튜브·인스타그램 콘텐츠가 확인된 캠핑장입니다.</p>
+        <div class="grid grid-pick" id="pick-list"></div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <h2 class="section-title" id="list-title">캠핑장 전체</h2>
+          <span class="result-count" id="count"><b>12</b>곳</span>
+          <button type="button" class="btn-ghost" id="reset" hidden data-component="Button">조건 지우기</button>
+        </div>
+        <p class="section-note" id="list-note">경기·강원의 반려동반 가능 캠핑장입니다. 카드를 누르면 자세한 평가를 볼 수 있습니다.</p>
+        <div class="grid" id="site-list"></div>
+        <div class="empty" id="empty" hidden data-when="조건에 맞는 곳 없음">
+          <p class="empty-title">이 조건에 맞는 캠핑장이 아직 없습니다</p>
+          <p class="empty-note">모아둔 캠핑장은 경기·강원 12곳뿐입니다.<br>시설 조건을 하나 빼거나 지역을 넓혀 보십시오.</p>
+          <button type="button" class="btn btn-outline" id="empty-reset" data-component="Button">조건 지우기</button>
+        </div>
+      </section>
+    </div>
+  </section>
+
+  <section data-screen="detail" data-title="캠핑장 상세" data-states="공식 정보로 대체된 곳">
+    <div class="app">
+      <button type="button" class="back" id="back" data-component="Button">← 목록으로</button>
+
+      <div class="detail-head">
+        <h1 class="detail-name" id="d-name">숲결 오토캠핑장</h1>
+        <p class="detail-region" id="d-region">강원 홍천</p>
+        <div class="tags" id="d-tags"></div>
+        <p class="detail-summary" id="d-summary"></p>
+      </div>
+
+      <div class="detail-body">
+        <div>
+          <div class="panel">
+            <div class="pros-cons">
+              <div>
+                <div class="pc-label"><span class="mark-good">●</span> 좋았다고 한 점</div>
+                <ul class="pc-list" id="d-pros"></ul>
+              </div>
+              <div>
+                <div class="pc-label"><span class="mark-bad">●</span> 아쉽다고 한 점</div>
+                <ul class="pc-list" id="d-cons"></ul>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <h2 class="panel-title">기본 정보</h2>
+            <dl class="facts">
+              <div class="fact"><dt>지역</dt><dd id="d-f-region">강원 홍천</dd></div>
+              <div class="fact"><dt>반려견 크기</dt><dd id="d-f-size">대형견까지 입장 가능</dd></div>
+              <div class="fact"><dt>시설</dt><dd id="d-f-fac">애견운동장, 온수샤워장, 계곡</dd></div>
+            </dl>
+          </div>
+        </div>
+
+        <div class="panel source-card">
+          <h2 class="panel-title" id="d-src-title">이 정보의 출처</h2>
+          <div class="source-meta" id="d-src-meta"></div>
+          <div class="source-caption" id="d-src-caption"></div>
+          <div class="source-channel" id="d-src-channel"></div>
+          <a class="btn btn-outline" id="d-src-link" href="#" target="_blank" rel="noreferrer noopener" data-component="Button">원본 보기</a>
+          <p class="source-note" id="d-src-note" hidden>
+            이 캠핑장은 유튜브·인스타그램에서 찾았지만 원본 게시물 링크를 특정하지 못해, 공식 정보로 대신 연결합니다.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+  /* ── product data (dummy) ── */
+  const SIZE_LABEL = { 1: '소형견까지', 2: '중형견까지', 3: '대형견까지' };
+  const SRC_LABEL = { youtube: '유튜브', instagram: '인스타그램', web: '공식 정보' };
+  const SRC_CLASS = { youtube: 'src-yt', instagram: 'src-ig', web: 'src-web' };
+
+  const SITES = [
+    {
+      id: 'sup-gyeol', name: '숲결 오토캠핑장', region: '강원', city: '홍천', size: 3,
+      facilities: ['애견운동장', '온수샤워장', '계곡'],
+      summary: '사이트마다 나무가 있어 그늘이 지고, 계곡 물놀이터가 강아지 발 담그기 좋다고 합니다.',
+      pros: ['사이트 간격이 넓어 옆 텐트 강아지와 마주칠 일이 거의 없었다고 합니다.', '계곡 수심이 얕아 수영 못 하는 강아지도 발을 담글 수 있었습니다.', '대형견도 목줄만 하면 운동장 이용이 가능했습니다.'],
+      cons: ['개별 울타리가 없어 짖는 강아지가 있으면 신경 쓰였다고 합니다.', '주말은 두 달 전에 예약이 마감된다고 합니다.'],
+      source: { platform: 'youtube', caption: '대형견 두 마리와 홍천 계곡 캠핑 1박 2일, 여기 진짜 물놀이 천국', channel: '네발가족 캠핑', url: '#' }
+    },
+    {
+      id: 'byeolbit', name: '별빛담은 오토캠핑장', region: '경기', city: '가평', size: 3,
+      facilities: ['애견운동장', '개별울타리', '온수샤워장'],
+      summary: '사이트마다 낮은 울타리가 있어 강아지를 풀어놓을 수 있고, 밤에 별이 잘 보인다고 합니다.',
+      pros: ['사이트마다 개별 울타리가 있어 텐트 안에서 강아지를 자유롭게 뒀습니다.', '애견운동장이 넓어 대형견도 마음껏 뛰었다고 합니다.', '온수가 잘 나와 강아지 발 씻기기 편했습니다.'],
+      cons: ['울타리 높이가 낮아 점프 잘 하는 강아지는 넘을 수 있다고 합니다.', '서울에서 두 시간 가까이 걸립니다.'],
+      source: { platform: 'youtube', caption: '가평 애견동반 캠핑장 솔직후기, 울타리 있는 곳 드디어 찾았습니다', channel: '멍캠일지', url: '#' }
+    },
+    {
+      id: 'dodam', name: '도담도담 애견동반캠핑장', region: '경기', city: '양평', size: 2,
+      facilities: ['애견운동장', '카페'],
+      summary: '규모는 작지만 관리가 깔끔하고, 캠핑장 안 카페에 강아지를 데리고 들어갈 수 있습니다.',
+      pros: ['사장님이 강아지를 잘 알고 챙겨준다는 후기가 많았습니다.', '카페 안까지 강아지 동반이 되어 비 오는 날에도 갈 곳이 있었습니다.'],
+      cons: ['중형견까지만 받아서 대형견은 예약이 안 됩니다.', '사이트가 열 개 남짓이라 자리 잡기가 어렵습니다.'],
+      source: { platform: 'instagram', caption: '양평 도담도담 다녀왔어요 🐕 카페까지 동반 가능한 곳', channel: '@mungmung_camp', url: '#' }
+    },
+    {
+      id: 'jajak', name: '자작나무숲 캠핑장', region: '강원', city: '횡성', size: 3,
+      facilities: ['개별울타리', '온수샤워장'],
+      summary: '자작나무 사이에 사이트가 흩어져 있어 조용하고, 사이트마다 울타리가 쳐져 있습니다.',
+      pros: ['사이트가 나무로 나뉘어 있어 다른 팀이 거의 보이지 않았습니다.', '울타리가 성인 허리 높이라 대형견도 넘지 못했다고 합니다.'],
+      cons: ['애견운동장이 따로 없어 산책은 캠핑장 밖 임도로 나가야 합니다.', '바닥이 흙이라 비 온 뒤에는 강아지가 많이 더러워집니다.'],
+      source: { platform: 'youtube', caption: '횡성 자작나무숲에서 리트리버와 2박, 울타리 사이트 후기', channel: '도그앤텐트', url: '#' }
+    },
+    {
+      id: 'baramgil', name: '바람길 캠핑장', region: '경기', city: '이천', size: 2,
+      facilities: ['개별울타리', '온수샤워장'],
+      summary: '수도권에서 가깝고 사이트가 평평해서 초보 캠퍼도 자리 잡기 쉽다고 합니다.',
+      pros: ['서울에서 한 시간이면 도착해 당일 왕복도 가능했습니다.', '개별 울타리가 있어 잠깐 자리를 비워도 괜찮았습니다.'],
+      cons: ['사이트 간격이 좁아 옆 팀 강아지와 자주 마주쳤다고 합니다.', '주변에 그늘이 적어 여름 낮에는 더웠습니다.'],
+      source: { platform: 'youtube', caption: '수도권 1시간 애견동반 캠핑장, 이천 바람길 다녀왔습니다', channel: '캠핑하는집사', url: '#' }
+    },
+    {
+      id: 'mulangae', name: '물안개 캠핑장', region: '강원', city: '평창', size: 2,
+      facilities: ['애견운동장', '카페'],
+      summary: '아침에 강가에 안개가 깔리는 풍경이 좋고, 애견운동장이 잔디로 되어 있습니다.',
+      pros: ['운동장 바닥이 잔디라 발바닥이 덜 상했다고 합니다.', '강가 산책로가 길어 아침 산책 코스가 좋았습니다.'],
+      cons: ['밤에 기온이 많이 떨어져 여름에도 강아지 담요가 필요했습니다.', '중형견까지만 받습니다.'],
+      source: { platform: 'instagram', caption: '평창 물안개캠핑장 1박🐾 잔디 운동장이 진짜 넓어요', channel: '@dogcamp_diary', url: '#' }
+    },
+    {
+      id: 'sonamu', name: '소나무언덕 캠핑장', region: '강원', city: '인제', size: 3,
+      facilities: ['개별울타리'],
+      summary: '소나무 아래 데크 사이트라 여름에도 시원하고, 사이트마다 울타리가 있습니다.',
+      pros: ['데크 사이트라 비 온 뒤에도 바닥이 질척이지 않았습니다.', '울타리가 튼튼해 대형견도 안심이었다고 합니다.'],
+      cons: ['데크가 좁아 큰 텐트는 들어가지 않습니다.', '샤워장까지 거리가 멀었습니다.'],
+      source: { platform: 'youtube', caption: '인제 소나무언덕, 데크 울타리 사이트 대형견 캠핑 후기', channel: '멍캠일지', url: '#' }
+    },
+    {
+      id: 'noeuljin', name: '노을진뜰 캠핑장', region: '경기', city: '파주', size: 1,
+      facilities: ['개별울타리', '카페'],
+      summary: '노을이 잘 보이는 언덕 사이트가 있고, 소형견 전용으로 운영합니다.',
+      pros: ['소형견만 받아서 큰 개를 무서워하는 강아지도 편했다고 합니다.', '사이트마다 울타리가 있어 목줄 없이 지낼 수 있었습니다.'],
+      cons: ['중형견 이상은 예약 자체가 불가능합니다.', '언덕이라 짐 옮기기가 힘들었습니다.'],
+      source: { platform: 'youtube', caption: '소형견 전용 캠핑장이 있다고? 파주 노을진뜰 다녀온 후기', channel: '캠핑하는집사', url: '#' }
+    },
+    {
+      id: 'haneul', name: '하늘바라기 글램핑', region: '경기', city: '포천', size: 1,
+      facilities: ['애견운동장'],
+      summary: '텐트를 안 쳐도 되는 글램핑이라 짐이 적고, 작은 애견운동장이 딸려 있습니다.',
+      pros: ['장비 없이 갈 수 있어 캠핑 처음인 사람도 갔다고 합니다.', '난방이 되어 겨울에도 강아지가 춥지 않았습니다.'],
+      cons: ['운동장이 작아 여러 팀이 겹치면 순서를 기다려야 했습니다.', '소형견까지만 받습니다.'],
+      source: { platform: 'instagram', caption: '포천 하늘바라기 글램핑🏕 짐 없이 강아지랑 겨울캠핑', channel: '@dogcamp_diary', url: '#' }
+    },
+    {
+      id: 'sanneomeo', name: '산너머 캠핑빌리지', region: '강원', city: '춘천', size: 1,
+      facilities: ['애견운동장', '카페'],
+      summary: '캠핑장 안에 애견 카페와 운동장이 함께 있어 비 오는 날에도 놀 곳이 있습니다.',
+      pros: ['실내 애견카페가 있어 날씨가 나빠도 강아지가 지루하지 않았습니다.', '춘천 시내가 가까워 장 보기 편했습니다.'],
+      cons: ['소형견 위주라 중형견 이상은 운동장 이용이 제한됩니다.', '주말에는 사람이 많아 조용하지는 않았습니다.'],
+      source: { platform: 'instagram', caption: '춘천 산너머캠핑빌리지, 비와도 걱정없는 실내 애견카페🐶', channel: '@mungmung_camp', url: '#' }
+    },
+    {
+      id: 'chorok', name: '초록마당 오토캠핑', region: '경기', city: '여주', size: 3,
+      facilities: ['애견운동장', '개별울타리'],
+      summary: '넓은 잔디밭에 사이트가 띄엄띄엄 있고, 애견운동장과 개별 울타리를 모두 갖췄습니다.',
+      pros: ['잔디 관리가 잘 되어 있어 강아지가 뒹굴어도 괜찮았습니다.', '운동장과 울타리가 모두 있어 조건이 까다로운 대형견도 갈 수 있었습니다.'],
+      cons: ['그늘이 거의 없어 한여름에는 타프가 꼭 필요합니다.', '예약 경쟁이 심합니다.'],
+      source: { platform: 'web', caption: '여주 초록마당 오토캠핑장 이용안내', channel: '캠핑장 공식 홈페이지', url: '#' }
+    },
+    {
+      id: 'gyegok', name: '계곡품은 캠핑장', region: '강원', city: '정선', size: 2,
+      facilities: ['계곡', '온수샤워장'],
+      summary: '사이트 바로 앞에 계곡이 흐르고, 여름에도 에어컨 없이 지낼 만하다고 합니다.',
+      pros: ['계곡 물이 차가워 더위를 많이 타는 강아지에게 좋았습니다.', '사이트 앞이 바로 물가라 이동이 편했습니다.'],
+      cons: ['운동장이나 울타리 같은 반려견 전용 시설은 없습니다.', '길이 좁고 험해 진입에 시간이 걸립니다.'],
+      source: { platform: 'web', caption: '정선 계곡품은 캠핑장 - 캠핏 예약 페이지', channel: '캠핏', url: '#' }
+    }
+  ];
+
+  /* 첫 화면 추천: 원본 콘텐츠가 확인된 곳(youtube/instagram)을 앞에 둔다 */
+  const PICKS = SITES.filter(s => s.source.platform !== 'web').slice(0, 3);
+
+  /* ── rendering ── */
+  const el = id => document.getElementById(id);
+
+  function badge(text, variant) {
+    return '<span class="badge badge-' + variant + '" data-component="Badge">' + text + '</span>';
+  }
+
+  function tagsHtml(site) {
+    return badge(SIZE_LABEL[site.size], 'default')
+      + site.facilities.map(f => badge(f, 'secondary')).join('');
+  }
+
+  function sourceLine(site) {
+    const p = site.source.platform;
+    return '<span class="src-dot ' + SRC_CLASS[p] + '"></span>'
+      + SRC_LABEL[p] + ' · ' + site.source.channel;
+  }
+
+  function cardHtml(site, isPick) {
+    return '<button type="button" class="site-card' + (isPick ? ' site-card-pick' : '')
+      + '" data-id="' + site.id + '" data-component="Card">'
+      + '<div class="card-top"><div>'
+      + '<div class="site-name">' + site.name + '</div>'
+      + '<div class="site-region">' + site.region + ' ' + site.city + '</div>'
+      + '</div></div>'
+      + '<div class="tags">' + tagsHtml(site) + '</div>'
+      + '<div class="site-summary">' + site.summary + '</div>'
+      + '<div class="card-foot">' + sourceLine(site) + '</div>'
+      + '</button>';
+  }
+
+  /* ── filtering ── */
+  const filters = { region: 'all', size: 'all', facilities: [] };
+
+  function isFiltered() {
+    return filters.region !== 'all' || filters.size !== 'all' || filters.facilities.length > 0;
+  }
+
+  function matches(site) {
+    if (filters.region !== 'all' && site.region !== filters.region) return false;
+    if (filters.size !== 'all' && site.size < Number(filters.size)) return false;
+    return filters.facilities.every(f => site.facilities.includes(f));
+  }
+
+  function render() {
+    const filtered = isFiltered();
+    const pickIds = new Set(PICKS.map(s => s.id));
+    /* 조건이 없을 땐 위에서 이미 보여준 추천 3곳을 아래 목록에서 뺀다 */
+    const results = SITES.filter(matches).filter(s => filtered || !pickIds.has(s.id));
+
+    el('pick-section').hidden = filtered;
+    if (!filtered) {
+      el('pick-list').innerHTML = PICKS.map(s => cardHtml(s, true)).join('');
+    }
+
+    el('list-title').textContent = filtered ? '조건에 맞는 캠핑장' : '그 외 캠핑장';
+    el('list-note').textContent = filtered
+      ? '고른 조건에 모두 맞는 캠핑장입니다. 카드를 누르면 자세한 평가를 볼 수 있습니다.'
+      : '위 추천 3곳을 제외한 나머지입니다. 카드를 누르면 자세한 평가를 볼 수 있습니다.';
+
+    el('site-list').innerHTML = results.map(s => cardHtml(s, false)).join('');
+    el('count').innerHTML = '<b>' + results.length + '</b>곳';
+    el('reset').hidden = !filtered;
+
+    /* 결과 없음은 선언된 preset이므로 상태 선택기와 동기화한다 */
+    prototypeShell.setState(results.length === 0 ? '조건에 맞는 곳 없음' : 'Default');
+  }
+
+  function bindFilters() {
+    el('f-region').onclick = e => {
+      const b = e.target.closest('button'); if (!b) return;
+      filters.region = b.dataset.value;
+      [...el('f-region').children].forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+      render();
+    };
+    el('f-size').onclick = e => {
+      const b = e.target.closest('button'); if (!b) return;
+      filters.size = b.dataset.value;
+      [...el('f-size').children].forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+      render();
+    };
+    document.querySelectorAll('.check input').forEach(input => {
+      input.onchange = () => {
+        const f = input.dataset.facility;
+        input.closest('.check').dataset.on = String(input.checked);
+        filters.facilities = input.checked
+          ? [...filters.facilities, f]
+          : filters.facilities.filter(x => x !== f);
+        render();
+      };
+    });
+    const reset = () => {
+      filters.region = 'all'; filters.size = 'all'; filters.facilities = [];
+      [...el('f-region').children].forEach(x => x.setAttribute('aria-pressed', String(x.dataset.value === 'all')));
+      [...el('f-size').children].forEach(x => x.setAttribute('aria-pressed', String(x.dataset.value === 'all')));
+      document.querySelectorAll('.check input').forEach(i => { i.checked = false; i.closest('.check').dataset.on = 'false'; });
+      render();
+    };
+    el('reset').onclick = reset;
+    el('empty-reset').onclick = reset;
+  }
+
+  /* ── detail ── */
+  function openDetail(id) {
+    const site = SITES.find(s => s.id === id) || SITES[0];
+    el('d-name').textContent = site.name;
+    el('d-region').textContent = site.region + ' ' + site.city;
+    el('d-tags').innerHTML = tagsHtml(site);
+    el('d-summary').textContent = site.summary;
+    el('d-pros').innerHTML = site.pros.map(p => '<li>' + p + '</li>').join('');
+    el('d-cons').innerHTML = site.cons.map(c => '<li>' + c + '</li>').join('');
+    el('d-f-region').textContent = site.region + ' ' + site.city;
+    el('d-f-size').textContent = SIZE_LABEL[site.size] + ' 입장 가능';
+    el('d-f-fac').textContent = site.facilities.join(', ');
+
+    const p = site.source.platform;
+    el('d-src-title').textContent = p === 'web' ? '이 정보의 출처' : '이 정보의 출처';
+    el('d-src-meta').innerHTML = '<span class="src-dot ' + SRC_CLASS[p] + '"></span>'
+      + '<span class="' + SRC_CLASS[p] + '">' + SRC_LABEL[p] + '</span>';
+    el('d-src-caption').textContent = site.source.caption;
+    el('d-src-channel').textContent = site.source.channel;
+    el('d-src-link').textContent = p === 'web' ? '공식 정보 보기' : '원본 보기';
+    el('d-src-note').hidden = p !== 'web';
+
+    prototypeShell.showScreen('detail');
+    prototypeShell.setState(p === 'web' ? '공식 정보로 대체된 곳' : 'Default');
+  }
+
+  const browseSection = document.querySelector('[data-screen="browse"]');
+  browseSection.addEventListener('click', e => {
+    const card = e.target.closest('.site-card');
+    if (card) openDetail(card.dataset.id);
+  });
+  el('back').onclick = () => prototypeShell.showScreen('browse');
+
+  /* 목록으로 돌아올 때 고른 조건을 화면에 다시 반영한다 */
+  new MutationObserver(() => { if (!browseSection.hidden) render(); })
+    .observe(browseSection, { attributes: true, attributeFilter: ['hidden'] });
+</script>
+
+<script>
+  const stage = document.querySelector('.sh-stage');
+  const screens = [...stage.querySelectorAll('[data-screen]')];
+  const screenSelect = document.getElementById('sh-screen');
+  const stateSelect = document.getElementById('sh-state');
+  const vpBtn = document.getElementById('sh-vp');
+  let current = null;
+  let currentStates = [];
+
+  screens.forEach(s => {
+    const option = document.createElement('option');
+    option.textContent = s.dataset.title || s.dataset.screen;
+    option.value = s.dataset.screen;
+    screenSelect.append(option);
+  });
+  screenSelect.onchange = () => show(screenSelect.value);
+
+  function show(slug) {
+    current = screens.find(s => s.dataset.screen === slug) || screens[0];
+    screens.forEach(s => s.hidden = s !== current);
+    screenSelect.value = current.dataset.screen;
+    history.replaceState(null, '', '#' + current.dataset.screen);
+    buildStates();
+  }
+
+  function buildStates() {
+    const declared = (current.dataset.states || '').split(',').map(x => x.trim()).filter(Boolean);
+    currentStates = ['Default', ...declared.filter(name => name !== 'Default')];
+    stateSelect.innerHTML = '';
+    currentStates.forEach(name => {
+      const option = document.createElement('option');
+      option.textContent = name;
+      option.value = name;
+      stateSelect.append(option);
+    });
+    applyState('Default');
+  }
+
+  function applyState(name) {
+    const active = currentStates.includes(name) ? name : 'Default';
+    current.querySelectorAll('[data-when]').forEach(el => {
+      el.hidden = !el.dataset.when.split(',').map(x => x.trim()).includes(active);
+    });
+    stateSelect.value = active;
+  }
+  stateSelect.onchange = () => applyState(stateSelect.value);
+
+  window.prototypeShell = {
+    showScreen: show,
+    setState: applyState,
+    getScreen: () => current?.dataset.screen,
+    getState: () => stateSelect.value
+  };
+
+  const VPS = ['full', '390', '768'];
+  let vp = VPS.find(v => document.body.classList.contains('sh-vp-' + v)) || 'full';
+  function applyVp() {
+    VPS.forEach(v => document.body.classList.toggle('sh-vp-' + v, v === vp && v !== 'full'));
+    vpBtn.textContent = 'vp: ' + vp + ' (m)';
+    vpBtn.classList.toggle('on', vp !== 'full');
+  }
+  vpBtn.onclick = () => { vp = VPS[(VPS.indexOf(vp) + 1) % VPS.length]; applyVp(); };
+  applyVp();
+
+  addEventListener('keydown', e => {
+    if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+    const i = screens.indexOf(current);
+    if (e.key === 'ArrowRight') show(screens[(i + 1) % screens.length].dataset.screen);
+    if (e.key === 'ArrowLeft') show(screens[(i - 1 + screens.length) % screens.length].dataset.screen);
+    if (e.key === 'm') vpBtn.click();
+  });
+
+  addEventListener('hashchange', () => show(location.hash.slice(1)));
+  show(location.hash.slice(1));
+
+  /* 제품 화면 초기 렌더는 shell 부팅 이후에 시작한다 */
+  bindFilters();
+  render();
+</script>
